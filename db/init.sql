@@ -18,21 +18,7 @@ CREATE TABLE IF NOT EXISTS telemetry (
 
 CREATE INDEX IF NOT EXISTS idx_telemetry_user ON telemetry(user_id);
 
--- OLAP mart for reports (fast lookup by user)
-CREATE TABLE IF NOT EXISTS report_mart (
-    user_id           VARCHAR(64) PRIMARY KEY,
-    full_name         VARCHAR(200),
-    email             VARCHAR(200),
-    prosthesis_model  VARCHAR(100),
-    total_steps       BIGINT NOT NULL DEFAULT 0,
-    total_distance_m  FLOAT NOT NULL DEFAULT 0,
-    avg_load_kg       FLOAT NOT NULL DEFAULT 0,
-    sessions_count    INT NOT NULL DEFAULT 0,
-    last_activity_at  TIMESTAMP,
-    updated_at        TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
--- Seed (usernames match Keycloak users)
+-- Source data only. The report mart is built in ClickHouse by the Airflow DAG.
 INSERT INTO crm_clients (user_id, full_name, email, prosthesis_model) VALUES
     ('prothetic1', 'Prothetic One', 'prothetic1@example.com', 'BP-Walk-X1'),
     ('prothetic2', 'Prothetic Two', 'prothetic2@example.com', 'BP-Walk-X2'),
@@ -50,24 +36,3 @@ INSERT INTO telemetry (user_id, recorded_at, steps, distance_m, load_kg) VALUES
     ('prothetic3', NOW(), 6100, 4500, 14.0),
     ('user1', NOW(), 1500, 1100, 9.5),
     ('user2', NOW() - INTERVAL '3 days', 800, 600, 8.0);
-
--- Initial mart build (Airflow refreshes daily)
-INSERT INTO report_mart (
-    user_id, full_name, email, prosthesis_model,
-    total_steps, total_distance_m, avg_load_kg,
-    sessions_count, last_activity_at, updated_at
-)
-SELECT
-    c.user_id,
-    c.full_name,
-    c.email,
-    c.prosthesis_model,
-    COALESCE(SUM(t.steps), 0),
-    COALESCE(SUM(t.distance_m), 0),
-    COALESCE(AVG(t.load_kg), 0),
-    COUNT(t.id),
-    MAX(t.recorded_at),
-    NOW()
-FROM crm_clients c
-LEFT JOIN telemetry t ON t.user_id = c.user_id
-GROUP BY c.user_id, c.full_name, c.email, c.prosthesis_model;
